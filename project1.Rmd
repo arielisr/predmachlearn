@@ -1,0 +1,77 @@
+---
+output: html_document
+---
+# Practical Machine Learning Course Project
+We used a random forest of 100 trees to perform predictions.
+We used the caret library to perform parameter tuning using 5-fold cross validation, and evaluate the performance of our model.
+The final model used mtry=36, and had a (cross-validation) accuracy of 0.9982163
+
+## Load the training and testing datasets, unify them, and preprocess the unified dataset in a consistent way
+* load the training and testing datasets
+* remove the 'classe' outcome from the training set and the 'problem_id' from the testing set
+* create the unified dataset which the concatenation of training and testing sets
+* remove the 'X' column, and all timestamps, since these are "noise" that disclose the outcome in the training set 
+* replace NA values in all columns with -1
+```{r echo=TRUE}
+setwd('d:/courses/predmachlearn')
+training=read.csv('pml-training.csv',na.strings = c("NA","#DIV/0!"))
+testing=read.csv('pml-testing.csv',na.strings = c("NA","#DIV/0!"))
+# remove the 'classe' outcome from the training set and the 'problem_id' from the testing set
+outcome=training$classe
+training$classe=NULL
+problem_id=testing$problem_id
+testing$problem_id=NULL
+# create the unified dataset which the concatenation of training and testing sets
+unified=rbind(training,testing)
+# remove the 'X' column, and all timestamps, because these are "noise" that disclose the outcome in the training set because of ordinal sampling
+unified$X=NULL
+unified=unified[,grep('timestamp',colnames(unified),invert=T)]
+# replace NA values with -1
+for (col in colnames(unified)) {
+    if (sum(is.na(unified[,col]))) {
+        unified[is.na(unified[,col]),col]=-1
+    }
+}
+```
+
+# train the model, using random forest w/ default parameters, 5-folds cross validation
+* create the training_new set using the training portion of the preprocessed unified dataset
+* use caret library to train a 100 tree random forest on the training_new set
+```{r echo=TRUE}
+library(caret)
+library(randomForest)
+training_new=unified[1:nrow(training),]
+training_new$classe=outcome
+set.seed(1)
+#tuneGrid = expand.grid(.mtry = c(2,91,181))
+ctrl <- trainControl(method = "repeatedcv", 
+                     number = 5,
+                     repeats = 1,
+                     verboseIter=TRUE)
+#model=train(classe~.,data=training_new,method='rf',trControl = ctrl,do.trace=TRUE,ntree=100, tuneLength = 10)
+#save(model,file='model.Rdata')
+load(file='model.Rdata')
+```
+* We used caret to choose the best random forest model using 5-fold cross-validation.
+* The tuning of mtry for this  random forest was mtry=`r model$bestTune$mtry`
+* The accuracy on the 5-fold cross-validation set was `r max(model$results$Accuracy)`
+
+# show importance of model features
+```{r echo=TRUE}
+varImp(model)
+```
+
+# predict the testing set using the model, and prepare submission files
+```{r echo=TRUE}
+testing_new=unified[(nrow(training)+1):nrow(unified),]
+answers=predict(model,testing_new)
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(answers)
+```
+* answers: `r answers`
